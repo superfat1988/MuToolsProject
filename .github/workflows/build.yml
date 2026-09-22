@@ -1,0 +1,60 @@
+name: Build MuTools (Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'MuToolsCode/**'
+      - '.github/workflows/build.yml'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.settings.host }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: MuToolsCode/package-lock.json
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: MuToolsCode/src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: MuToolsCode
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: MuToolsCode
+          args: --target ${{ matrix.settings.target }}
+
+      - name: Upload artifacts (installers and exe)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutools-windows-x64
+          path: |
+            MuToolsCode/src-tauri/target/*/release/*.exe
+            MuToolsCode/src-tauri/target/*/release/bundle/nsis/*.exe
+            MuToolsCode/src-tauri/target/*/release/bundle/msi/*.msi
+          if-no-files-found: error
